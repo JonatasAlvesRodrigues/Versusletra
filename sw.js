@@ -1,4 +1,4 @@
-const CACHE_NAME = 'versus-letra-v5';
+const CACHE_NAME = 'versus-letra-v6';
 const ASSETS = [
   './',
   './index.html',
@@ -35,7 +35,7 @@ self.addEventListener('activate', (event) => {
       return Promise.all(
         keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))
       );
-    })
+    }).then(() => self.clients.claim())
   );
 });
 

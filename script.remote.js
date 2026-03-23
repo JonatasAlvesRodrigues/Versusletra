@@ -454,9 +454,10 @@ class VersusLetra {
     }
 
     ensureAdminPanel() {
+        this.ensureAdminScreenExists();
         let panel = document.getElementById('admin-rewards-panel');
         if (panel) {
-            const isInitialized = panel.querySelector('#admin-avatar-char') && panel.querySelector('#admin-rewards-json') && panel.querySelector('#admin-history-list');
+            const isInitialized = panel.querySelector('#admin-avatar-char') && panel.querySelector('#admin-theme-name');
             if (!isInitialized) {
                 panel.innerHTML = this.getAdminPanelMarkup();
                 delete panel.dataset.bound;
@@ -465,28 +466,50 @@ class VersusLetra {
             return panel;
         }
 
-        const profileScreen = document.getElementById('profile-screen');
-        if (!profileScreen) return null;
-
-        const suggestionBox = profileScreen.querySelector('.suggestion-box');
-        if (!suggestionBox || !suggestionBox.parentElement) return null;
+        const host = document.getElementById('admin-panel-host');
+        if (!host) return null;
 
         panel = document.createElement('div');
         panel.id = 'admin-rewards-panel';
         panel.className = 'admin-panel';
-        panel.style.display = 'none';
         panel.innerHTML = this.getAdminPanelMarkup();
 
-        suggestionBox.insertAdjacentElement('afterend', panel);
+        host.appendChild(panel);
         this.bindAdminPanelEvents(panel);
         return panel;
+    }
+
+    ensureAdminScreenExists() {
+        let screen = document.getElementById('admin-screen');
+        if (!screen) {
+            const app = document.getElementById('app');
+            if (!app) return null;
+
+            screen = document.createElement('section');
+            screen.id = 'admin-screen';
+            screen.className = 'screen';
+            screen.innerHTML = `
+                <div class="about-card">
+                    <h2 id="admin-title">Painel Administrativo</h2>
+                    <p id="admin-screen-help" class="admin-help">
+                        Gerencie avatares, cores e temas globais em um espaço separado do perfil.
+                    </p>
+                    <div id="admin-panel-host"></div>
+                    <button id="btn-back-admin" class="btn-secondary">VOLTAR</button>
+                </div>
+            `;
+            app.appendChild(screen);
+        }
+
+        this.screens.admin = screen;
+        return screen;
     }
 
     getAdminPanelMarkup() {
         return `
             <h3>Painel ADM - Recompensas Globais</h3>
             <p class="admin-help" id="admin-rewards-help">
-                Tudo que você criar aqui pode ser liberado para todos os jogadores. Defina o nível de desbloqueio e mantenha um padrão visual.
+                Crie recompensas globais de forma simples: salvar, editar e remover.
             </p>
 
             <div class="admin-summary">
@@ -529,18 +552,72 @@ class VersusLetra {
                 <h4>Novo Tema</h4>
                 <p class="admin-tip">Crie ID único (sem espaços). Você pode usar presets para acelerar.</p>
                 <div class="admin-grid">
-                    <input type="text" id="admin-theme-name" placeholder="Nome do tema">
-                    <input type="text" id="admin-theme-icon" maxlength="4" placeholder="Ícone (ex: 🌌)">
-                    <input type="number" id="admin-theme-level" min="1" value="1" placeholder="Nível">
-                    <input type="text" id="admin-theme-id" placeholder="ID (ex: galaxia)">
-                    <input type="color" id="admin-theme-primary" value="#1e90ff">
-                    <input type="color" id="admin-theme-bg" value="#0f172a">
-                    <input type="color" id="admin-theme-card" value="#1e293b">
-                    <input type="color" id="admin-theme-text" value="#f8fafc">
+                    <div class="admin-field">
+                        <label class="admin-field-label" for="admin-theme-name">Nome</label>
+                        <input type="text" id="admin-theme-name" placeholder="Nome do tema">
+                    </div>
+                    <div class="admin-field">
+                        <label class="admin-field-label" for="admin-theme-icon">Ícone</label>
+                        <input type="text" id="admin-theme-icon" maxlength="4" placeholder="Ícone (ex: 🌌)">
+                    </div>
+                    <div class="admin-field">
+                        <label class="admin-field-label" for="admin-theme-level">Nível</label>
+                        <input type="number" id="admin-theme-level" min="1" value="1" placeholder="Nível">
+                    </div>
+                    <div class="admin-field">
+                        <label class="admin-field-label" for="admin-theme-id">ID</label>
+                        <input type="text" id="admin-theme-id" placeholder="ID (ex: galaxia)">
+                    </div>
+
+                    <div class="admin-field">
+                        <label class="admin-field-label" for="admin-theme-primary">
+                            Cor Principal
+                            <span class="admin-help-wrap">
+                                <button type="button" class="admin-help-icon admin-help-toggle" aria-label="Ajuda Cor Principal">?</button>
+                                <span class="admin-help-pop">Define botões, destaques e bordas ativas.</span>
+                            </span>
+                        </label>
+                        <input type="color" id="admin-theme-primary" value="#1e90ff">
+                    </div>
+                    <div class="admin-field">
+                        <label class="admin-field-label" for="admin-theme-bg">
+                            Fundo
+                            <span class="admin-help-wrap">
+                                <button type="button" class="admin-help-icon admin-help-toggle" aria-label="Ajuda Fundo">?</button>
+                                <span class="admin-help-pop">Cor de fundo geral do app e das telas.</span>
+                            </span>
+                        </label>
+                        <input type="color" id="admin-theme-bg" value="#0f172a">
+                    </div>
+                    <div class="admin-field">
+                        <label class="admin-field-label" for="admin-theme-card">
+                            Card
+                            <span class="admin-help-wrap">
+                                <button type="button" class="admin-help-icon admin-help-toggle" aria-label="Ajuda Card">?</button>
+                                <span class="admin-help-pop">Cor de caixas e painéis internos.</span>
+                            </span>
+                        </label>
+                        <input type="color" id="admin-theme-card" value="#1e293b">
+                    </div>
+                    <div class="admin-field">
+                        <label class="admin-field-label" for="admin-theme-text">
+                            Texto
+                            <span class="admin-help-wrap">
+                                <button type="button" class="admin-help-icon admin-help-toggle" aria-label="Ajuda Texto">?</button>
+                                <span class="admin-help-pop">Cor principal dos textos do jogo.</span>
+                            </span>
+                        </label>
+                        <input type="color" id="admin-theme-text" value="#f8fafc">
+                    </div>
                 </div>
+                <p class="admin-tip">
+                    Cor Principal: botões, destaques e bordas ativas. Fundo: fundo geral do app.
+                    Card: caixas/painéis. Texto: cor principal dos textos.
+                </p>
                 <div class="admin-actions-row">
                     <button id="btn-admin-generate-theme-id" class="btn-secondary">Gerar ID</button>
                     <button id="btn-admin-preview-theme" class="btn-secondary">Pré-visualizar</button>
+                    <button id="btn-admin-clear-preview-theme" class="btn-secondary">Limpar Preview</button>
                     <button id="btn-admin-add-theme" class="btn-primary">Salvar Tema</button>
                 </div>
                 <input type="hidden" id="admin-theme-edit">
@@ -558,23 +635,10 @@ class VersusLetra {
             </div>
 
             <div class="admin-block">
-                <h4>Backup e Publicação</h4>
-                <p class="admin-tip">Exporte/importe JSON para versionar suas recompensas customizadas.</p>
-                <textarea id="admin-rewards-json" class="admin-json" placeholder="JSON de recompensas customizadas"></textarea>
+                <h4>Limpeza Rápida</h4>
+                <p class="admin-tip">Remove todos os itens customizados de uma vez.</p>
                 <div class="admin-actions-row">
-                    <button id="btn-admin-export-rewards" class="btn-secondary">Exportar JSON</button>
-                    <button id="btn-admin-import-rewards" class="btn-secondary">Importar JSON</button>
                     <button id="btn-admin-clear-rewards" class="btn-secondary danger">Limpar Custom</button>
-                </div>
-            </div>
-
-            <div class="admin-block">
-                <h4>Histórico e Rollback</h4>
-                <p class="admin-tip">Cada mudança fica salva em histórico local para restaurar versões anteriores.</p>
-                <select id="admin-history-list" class="admin-history-select"></select>
-                <div class="admin-actions-row">
-                    <button id="btn-admin-rollback-history" class="btn-secondary">Restaurar Selecionado</button>
-                    <button id="btn-admin-clear-history" class="btn-secondary">Limpar Histórico</button>
                 </div>
             </div>
 
@@ -597,11 +661,7 @@ class VersusLetra {
         bindClick('btn-admin-cancel-avatar-edit', () => this.clearAdminEditState('avatar'));
         bindClick('btn-admin-cancel-color-edit', () => this.clearAdminEditState('color'));
         bindClick('btn-admin-cancel-theme-edit', () => this.clearAdminEditState('theme'));
-        bindClick('btn-admin-export-rewards', () => this.exportAdminRewardsJson());
-        bindClick('btn-admin-import-rewards', () => this.importAdminRewardsJson());
         bindClick('btn-admin-clear-rewards', () => this.clearAllCustomRewards());
-        bindClick('btn-admin-rollback-history', () => this.rollbackAdminHistory());
-        bindClick('btn-admin-clear-history', () => this.clearAdminHistory());
         bindClick('btn-admin-generate-theme-id', () => {
             const nameInput = document.getElementById('admin-theme-name');
             const idInput = document.getElementById('admin-theme-id');
@@ -609,10 +669,25 @@ class VersusLetra {
             idInput.value = this.sanitizeThemeId(nameInput?.value || idInput.value);
         });
         bindClick('btn-admin-preview-theme', () => this.previewAdminThemeDraft());
+        bindClick('btn-admin-clear-preview-theme', () => this.clearAdminThemePreview());
 
         panel.addEventListener('click', (event) => {
+            if (!event.target.closest('.admin-help-wrap')) {
+                panel.querySelectorAll('.admin-help-pop.show').forEach((el) => el.classList.remove('show'));
+            }
+
             const button = event.target.closest('button');
             if (!button) return;
+
+            if (button.classList.contains('admin-help-toggle')) {
+                const wrap = button.closest('.admin-help-wrap');
+                const pop = wrap?.querySelector('.admin-help-pop');
+                if (!pop) return;
+                const willShow = !pop.classList.contains('show');
+                panel.querySelectorAll('.admin-help-pop.show').forEach((el) => el.classList.remove('show'));
+                if (willShow) pop.classList.add('show');
+                return;
+            }
 
             if (button.classList.contains('btn-admin-preset')) {
                 this.applyAdminThemePreset(button.dataset.preset);
@@ -632,12 +707,6 @@ class VersusLetra {
                 this.startEditColor(button.dataset.value);
             } else if (action === 'edit-theme') {
                 this.startEditTheme(button.dataset.value);
-            } else if (action === 'move-avatar-up' || action === 'move-avatar-down') {
-                this.moveCustomItem('avatars', button.dataset.value, action.endsWith('up') ? -1 : 1);
-            } else if (action === 'move-color-up' || action === 'move-color-down') {
-                this.moveCustomItem('colors', button.dataset.value, action.endsWith('up') ? -1 : 1);
-            } else if (action === 'move-theme-up' || action === 'move-theme-down') {
-                this.moveCustomItem('themes', button.dataset.value, action.endsWith('up') ? -1 : 1);
             }
         });
     }
@@ -743,7 +812,7 @@ class VersusLetra {
     }
 
     async rollbackAdminHistory() {
-        if (!this.user?.is_admin) return;
+        if (!this.isCurrentUserAdmin()) return;
         const select = document.getElementById('admin-history-list');
         if (!select?.value) return this.showFloatingMessage('Selecione uma versão do histórico.', 'warning');
 
@@ -843,7 +912,7 @@ class VersusLetra {
     }
 
     async moveCustomItem(type, value, direction) {
-        if (!this.user?.is_admin) return;
+        if (!this.isCurrentUserAdmin()) return;
         const list = this.rewards[type];
         if (!Array.isArray(list)) return;
 
@@ -870,7 +939,7 @@ class VersusLetra {
     }
 
     async addAdminAvatarReward() {
-        if (!this.user?.is_admin) return;
+        if (!this.isCurrentUserAdmin()) return;
 
         const charInput = document.getElementById('admin-avatar-char');
         const levelInput = document.getElementById('admin-avatar-level');
@@ -917,7 +986,7 @@ class VersusLetra {
     }
 
     async addAdminColorReward() {
-        if (!this.user?.is_admin) return;
+        if (!this.isCurrentUserAdmin()) return;
 
         const hexInput = document.getElementById('admin-color-hex');
         const levelInput = document.getElementById('admin-color-level');
@@ -960,7 +1029,7 @@ class VersusLetra {
     }
 
     async addAdminThemeReward() {
-        if (!this.user?.is_admin) return;
+        if (!this.isCurrentUserAdmin()) return;
 
         const idInput = document.getElementById('admin-theme-id');
         const nameInput = document.getElementById('admin-theme-name');
@@ -1035,7 +1104,7 @@ class VersusLetra {
     }
 
     async removeCustomAvatar(char) {
-        if (!this.user?.is_admin) return;
+        if (!this.isCurrentUserAdmin()) return;
         this.pushRewardsHistory('Remover avatar');
         this.rewards.avatars = this.rewards.avatars.filter((item) => !(item.custom === true && item.char === char));
         this.avatars = this.rewards.avatars.map((a) => a.char);
@@ -1048,7 +1117,7 @@ class VersusLetra {
     }
 
     async removeCustomColor(hex) {
-        if (!this.user?.is_admin) return;
+        if (!this.isCurrentUserAdmin()) return;
         this.pushRewardsHistory('Remover cor');
         const targetHex = String(hex || '').toLowerCase();
         this.rewards.colors = this.rewards.colors.filter((item) => !(item.custom === true && item.hex.toLowerCase() === targetHex));
@@ -1063,7 +1132,7 @@ class VersusLetra {
     }
 
     async removeCustomTheme(themeId) {
-        if (!this.user?.is_admin) return;
+        if (!this.isCurrentUserAdmin()) return;
         this.pushRewardsHistory('Remover tema');
         this.rewards.themes = this.rewards.themes.filter((item) => !(item.custom === true && item.id === themeId));
         if (!this.rewards.themes.some((t) => t.id === this.selectedTheme)) {
@@ -1076,7 +1145,7 @@ class VersusLetra {
     }
 
     async clearAllCustomRewards() {
-        if (!this.user?.is_admin) return;
+        if (!this.isCurrentUserAdmin()) return;
         if (!confirm('Tem certeza que deseja remover TODAS as recompensas customizadas globais?')) return;
         this.pushRewardsHistory('Limpar tudo');
 
@@ -1110,7 +1179,7 @@ class VersusLetra {
     }
 
     async importAdminRewardsJson() {
-        if (!this.user?.is_admin) return;
+        if (!this.isCurrentUserAdmin()) return;
         const textarea = document.getElementById('admin-rewards-json');
         if (!textarea) return;
 
@@ -1160,18 +1229,27 @@ class VersusLetra {
         const text = document.getElementById('admin-theme-text')?.value;
 
         if (!primary || !bg || !card || !text) return;
-        document.documentElement.style.setProperty('--primary-color', primary);
-        document.documentElement.style.setProperty('--bg-color', bg);
-        document.documentElement.style.setProperty('--card-bg', card);
-        document.documentElement.style.setProperty('--text-color', text);
+        document.body.style.setProperty('--primary-color', primary);
+        document.body.style.setProperty('--bg-color', bg);
+        document.body.style.setProperty('--card-bg', card);
+        document.body.style.setProperty('--text-color', text);
         this.setAdminStatus('Pré-visualização aplicada localmente (ainda não salva).', 'info');
+    }
+
+    clearAdminThemePreview(options = {}) {
+        const { silent = false } = options;
+        document.body.style.removeProperty('--primary-color');
+        document.body.style.removeProperty('--bg-color');
+        document.body.style.removeProperty('--card-bg');
+        document.body.style.removeProperty('--text-color');
+        if (!silent) this.setAdminStatus('Pré-visualização limpa.', 'info');
     }
 
     renderAdminRewardsPanel() {
         const panel = this.ensureAdminPanel();
         if (!panel) return;
 
-        const isAdmin = Boolean(this.user && this.user.is_admin);
+        const isAdmin = this.isCurrentUserAdmin();
         panel.style.display = isAdmin ? 'block' : 'none';
         if (!isAdmin) return;
 
@@ -1194,8 +1272,6 @@ class VersusLetra {
             avatarList.innerHTML = customAvatars.length
                 ? customAvatars.map((item) => `
                     <span class="admin-pill">${item.char} LV ${item.level}
-                        <button class="admin-mini" data-action="move-avatar-up" data-value="${item.char}" title="Subir">↑</button>
-                        <button class="admin-mini" data-action="move-avatar-down" data-value="${item.char}" title="Descer">↓</button>
                         <button class="admin-mini" data-action="edit-avatar" data-value="${item.char}" title="Editar">✎</button>
                         <button class="admin-remove" data-action="remove-avatar" data-value="${item.char}" title="Remover">×</button>
                     </span>
@@ -1207,8 +1283,6 @@ class VersusLetra {
             colorList.innerHTML = customColors.length
                 ? customColors.map((item) => `
                     <span class="admin-pill">${item.hex.toUpperCase()} LV ${item.level}
-                        <button class="admin-mini" data-action="move-color-up" data-value="${item.hex}" title="Subir">↑</button>
-                        <button class="admin-mini" data-action="move-color-down" data-value="${item.hex}" title="Descer">↓</button>
                         <button class="admin-mini" data-action="edit-color" data-value="${item.hex}" title="Editar">✎</button>
                         <button class="admin-remove" data-action="remove-color" data-value="${item.hex}" title="Remover">×</button>
                     </span>
@@ -1220,16 +1294,12 @@ class VersusLetra {
             themeList.innerHTML = customThemes.length
                 ? customThemes.map((item) => `
                     <span class="admin-pill">${item.icon || '🎨'} ${item.name} • ${item.id} • LV ${item.level}
-                        <button class="admin-mini" data-action="move-theme-up" data-value="${item.id}" title="Subir">↑</button>
-                        <button class="admin-mini" data-action="move-theme-down" data-value="${item.id}" title="Descer">↓</button>
                         <button class="admin-mini" data-action="edit-theme" data-value="${item.id}" title="Editar">✎</button>
                         <button class="admin-remove" data-action="remove-theme" data-value="${item.id}" title="Remover">×</button>
                     </span>
                 `).join('')
                 : '<span class="admin-empty">Nenhum tema custom ainda.</span>';
         }
-
-        this.renderAdminHistory();
     }
 
     init() {
@@ -1289,6 +1359,7 @@ class VersusLetra {
         byId('btn-play-setup', this.t('play_local'));
         byId('btn-play-online', this.t('play_online'));
         bySelector('#btn-ranking .grid-label', this.t('ranking'));
+        bySelector('#btn-admin-home .grid-label', 'Painel ADM');
         bySelector('#btn-how-to .grid-label', this.t('rules'));
         bySelector('#btn-about .grid-label', this.t('about'));
         bySelector('#btn-settings-home .grid-label', this.t('settings_short'));
@@ -1331,6 +1402,7 @@ class VersusLetra {
         byTitle('btn-global-back', this.t('back_title'));
         byTitle('btn-profile', this.t('my_profile'));
         byTitle('btn-friends', this.t('friends'));
+        byTitle('btn-admin', 'Painel ADM');
         byTitle('btn-settings', this.t('settings_title_btn'));
         byTitle('theme-toggle', this.t('toggle_theme'));
         byTitle('sound-toggle', this.t('toggle_sound'));
@@ -1437,7 +1509,7 @@ class VersusLetra {
             };
         }
 
-        ['btn-back-ranking', 'btn-back-about', 'btn-back-friends', 'btn-back-profile', 'btn-back-setup', 'btn-back-ta-setup', 'btn-back-party-setup', 'btn-back-settings']
+        ['btn-back-ranking', 'btn-back-about', 'btn-back-friends', 'btn-back-profile', 'btn-back-setup', 'btn-back-ta-setup', 'btn-back-party-setup', 'btn-back-settings', 'btn-back-admin']
             .forEach(id => byId(id, this.t('back')));
 
         const setupTitle = document.getElementById('setup-title');
@@ -1473,6 +1545,8 @@ class VersusLetra {
     }
 
     setupEventListeners() {
+        this.ensureAdminButtonsExist();
+        this.ensureAdminScreenExists();
         this.ensureAdminPanel();
 
         // Screen Navigation
@@ -1497,6 +1571,27 @@ class VersusLetra {
         document.getElementById('btn-about').addEventListener('click', () => this.showScreen('about'));
         document.getElementById('btn-settings').addEventListener('click', () => this.showScreen('settings'));
         document.getElementById('btn-settings-home').addEventListener('click', () => this.showScreen('settings'));
+        const adminHomeBtn = document.getElementById('btn-admin-home');
+        if (adminHomeBtn) {
+            adminHomeBtn.addEventListener('click', () => {
+                this.showScreen('admin');
+                this.renderAdminRewardsPanel();
+            });
+        }
+        const adminBtn = document.getElementById('btn-admin');
+        if (adminBtn) {
+            adminBtn.addEventListener('click', () => {
+                this.showScreen('admin');
+                this.renderAdminRewardsPanel();
+            });
+        }
+        const adminProfileBtn = document.getElementById('btn-open-admin-profile');
+        if (adminProfileBtn) {
+            adminProfileBtn.addEventListener('click', () => {
+                this.showScreen('admin');
+                this.renderAdminRewardsPanel();
+            });
+        }
         document.getElementById('btn-friends').addEventListener('click', () => {
             this.showScreen('friends');
             this.renderFriendsList();
@@ -1629,6 +1724,7 @@ class VersusLetra {
             'btn-back-about',
             'btn-back-friends',
             'btn-back-profile',
+            'btn-back-admin',
             'btn-back-setup',
             'btn-back-ta-setup',
             'btn-back-party-setup',
@@ -1712,6 +1808,29 @@ class VersusLetra {
 
         // Sound initializations on first interaction
         document.addEventListener('click', () => this.initAudio(), { once: true });
+    }
+
+    ensureAdminButtonsExist() {
+        const headerLeft = document.querySelector('header .header-left');
+        if (headerLeft && !document.getElementById('btn-admin')) {
+            const btn = document.createElement('button');
+            btn.id = 'btn-admin';
+            btn.className = 'btn-icon';
+            btn.title = 'Painel ADM';
+            btn.style.display = 'none';
+            btn.innerHTML = '<span class="icon-settings">🛡️</span>';
+            headerLeft.appendChild(btn);
+        }
+
+        const secondaryGrid = document.querySelector('#home-screen .secondary-grid');
+        if (secondaryGrid && !document.getElementById('btn-admin-home')) {
+            const btn = document.createElement('button');
+            btn.id = 'btn-admin-home';
+            btn.className = 'btn-grid';
+            btn.style.display = 'none';
+            btn.innerHTML = '<span class="grid-icon">🛡️</span><span class="grid-label">Painel ADM</span>';
+            secondaryGrid.insertBefore(btn, secondaryGrid.firstChild);
+        }
     }
 
     renderPartyPlayerButtons() {
@@ -2492,6 +2611,21 @@ class VersusLetra {
         return this.sanitizePlayerName(rawName, 'Jogador');
     }
 
+    isCurrentUserAdmin() {
+        if (!this.user) return false;
+        const app = this.user.app_metadata || {};
+        const meta = this.user.user_metadata || {};
+        return Boolean(
+            this.user.is_admin === true ||
+            app.is_admin === true ||
+            app.admin === true ||
+            meta.is_admin === true ||
+            meta.admin === true ||
+            String(app.role || '').toLowerCase() === 'admin' ||
+            String(meta.role || '').toLowerCase() === 'admin'
+        );
+    }
+
     updateUIForUser() {
         if (!this.isDataLoaded) return; // Não atualiza se os dados não carregaram
         
@@ -2499,6 +2633,9 @@ class VersusLetra {
         const userDisplayName = document.getElementById('user-display-name');
         const logoutBtn = document.getElementById('btn-logout');
         const profileBtn = document.getElementById('btn-profile');
+        const adminBtn = document.getElementById('btn-admin');
+        const adminHomeBtn = document.getElementById('btn-admin-home');
+        const profileAdminShortcut = document.getElementById('profile-admin-shortcut');
         const userLevel = document.getElementById('user-level');
         const xpFill = document.getElementById('user-xp-fill');
 
@@ -2514,16 +2651,23 @@ class VersusLetra {
             if (this.user) {
                 const nameToShow = this.getDisplayName();
                 // Adiciona selo de ADM se for o caso
-                const adminBadge = this.user.is_admin ? ' <span style="font-size:0.6em; background:gold; color:black; padding:2px 5px; border-radius:5px; vertical-align:middle;">ADM</span>' : '';
+                const adminBadge = this.isCurrentUserAdmin() ? ' <span style="font-size:0.6em; background:gold; color:black; padding:2px 5px; border-radius:5px; vertical-align:middle;">ADM</span>' : '';
                 userDisplayName.innerHTML = nameToShow + adminBadge;
                 userDisplayName.style.color = this.selectedColor;
                 logoutBtn.textContent = this.t('logout');
                 profileBtn.style.display = 'block';
+                const isAdmin = this.isCurrentUserAdmin();
+                if (adminBtn) adminBtn.style.display = isAdmin ? 'inline-flex' : 'none';
+                if (adminHomeBtn) adminHomeBtn.style.display = isAdmin ? 'flex' : 'none';
+                if (profileAdminShortcut) profileAdminShortcut.style.display = isAdmin ? 'block' : 'none';
             } else {
                 userDisplayName.textContent = this.t('guest');
                 userDisplayName.style.color = 'var(--primary-color)';
                 logoutBtn.textContent = this.t('login_action');
                 profileBtn.style.display = 'none';
+                if (adminBtn) adminBtn.style.display = 'none';
+                if (adminHomeBtn) adminHomeBtn.style.display = 'none';
+                if (profileAdminShortcut) profileAdminShortcut.style.display = 'none';
             }
             
             // Level and XP UI
@@ -2558,6 +2702,9 @@ class VersusLetra {
         } else {
             userInfo.style.display = 'none';
             profileBtn.style.display = 'none';
+            if (adminBtn) adminBtn.style.display = 'none';
+            if (adminHomeBtn) adminHomeBtn.style.display = 'none';
+            if (profileAdminShortcut) profileAdminShortcut.style.display = 'none';
             this.renderAdminRewardsPanel();
         }
     }
@@ -2566,7 +2713,7 @@ class VersusLetra {
         const allAvatars = (this.rewards?.avatars || []).map((avatar) => avatar.char);
         if (allAvatars.length === 0) return ['👤'];
 
-        const isAdmin = Boolean(this.user && this.user.is_admin);
+        const isAdmin = this.isCurrentUserAdmin();
         if (isAdmin) {
             this.unlockedItems.avatars = [...allAvatars];
             return allAvatars;
@@ -2621,7 +2768,7 @@ class VersusLetra {
         const avatarContainer = document.getElementById('profile-avatar-picker');
         if (avatarContainer) {
             avatarContainer.innerHTML = '';
-            const isAdmin = this.user && this.user.is_admin;
+            const isAdmin = this.isCurrentUserAdmin();
             this.rewards.avatars.forEach(avatar => {
                 const isLocked = !isAdmin && this.level < avatar.level;
                 const div = document.createElement('div');
@@ -2645,7 +2792,7 @@ class VersusLetra {
         const colorContainer = document.getElementById('nick-color-picker');
         if (colorContainer) {
             colorContainer.innerHTML = '';
-            const isAdmin = this.user && this.user.is_admin;
+            const isAdmin = this.isCurrentUserAdmin();
             this.rewards.colors.forEach(color => {
                 const isLocked = !isAdmin && this.level < color.level;
                 const div = document.createElement('div');
@@ -2669,7 +2816,7 @@ class VersusLetra {
         const themeContainer = document.getElementById('theme-picker');
         if (themeContainer) {
             themeContainer.innerHTML = '';
-            const isAdmin = this.user && this.user.is_admin;
+            const isAdmin = this.isCurrentUserAdmin();
             this.rewards.themes.forEach(theme => {
                 const isLocked = !isAdmin && this.level < theme.level;
                 const div = document.createElement('div');
@@ -2691,7 +2838,8 @@ class VersusLetra {
 
     applyTheme(themeId, options = {}) {
         const { silent = false } = options;
-        const isAdmin = Boolean(this.user && this.user.is_admin);
+        this.clearAdminThemePreview({ silent: true });
+        const isAdmin = this.isCurrentUserAdmin();
         const targetTheme = (this.rewards?.themes || []).find((theme) => theme.id === themeId);
         if (targetTheme && !isAdmin && this.level < targetTheme.level) {
             this.selectedTheme = 'default';
@@ -2773,15 +2921,16 @@ class VersusLetra {
         ];
     }
 
-    renderAchievementsGrid(containerId, achievementData = this.achievements, isAdmin = Boolean(this.user && this.user.is_admin)) {
+    renderAchievementsGrid(containerId, achievementData = this.achievements, isAdmin = null) {
         const container = document.getElementById(containerId);
         if (!container) return;
+        const adminMode = (isAdmin === null) ? this.isCurrentUserAdmin() : Boolean(isAdmin);
 
         container.innerHTML = '';
         const badges = this.getAchievementCatalog();
 
         badges.forEach(badge => {
-            const isUnlocked = achievementData?.[badge.id] === true || isAdmin;
+            const isUnlocked = achievementData?.[badge.id] === true || adminMode;
             
             const div = document.createElement('div');
             div.className = `achievement-badge ${isUnlocked ? 'unlocked' : 'locked'}`;
@@ -3010,7 +3159,7 @@ class VersusLetra {
                 this.exitOnline();
                 this.showScreen('home');
             }
-        } else if (['ranking', 'about', 'profile', 'login', 'signup', 'settings', 'party-mode'].includes(activeScreen)) {
+        } else if (['ranking', 'about', 'profile', 'admin', 'login', 'signup', 'settings', 'party-mode'].includes(activeScreen)) {
             if (activeScreen === 'party-mode') {
                 const gameplay = document.getElementById('party-gameplay');
                 if (gameplay && gameplay.style.display === 'block') {
@@ -3033,6 +3182,11 @@ class VersusLetra {
     }
 
     showScreen(screenName) {
+        if (screenName === 'admin' && !this.isCurrentUserAdmin()) {
+            this.showFloatingMessage('Painel ADM disponível apenas para administradores.', 'warning');
+            screenName = 'home';
+        }
+
         // Bloqueio extra: Se tentar acessar Modo Galera no Desktop, redireciona para Home e mostra QR
         if (screenName === 'party-mode' && !this.isMobile) {
             this.showScreen('home');
@@ -3082,7 +3236,7 @@ class VersusLetra {
         }
 
         // Salva a última tela (exceto telas de jogo/setup que perdem estado no refresh)
-        if (['home', 'about', 'ranking', 'profile', 'login', 'signup', 'settings'].includes(screenName)) {
+        if (['home', 'about', 'ranking', 'profile', 'admin', 'login', 'signup', 'settings'].includes(screenName)) {
             localStorage.setItem('versus-letra-last-screen', screenName);
         }
 
