@@ -274,6 +274,14 @@ class VersusLetra {
             .replace(/^-|-$/g, '');
     }
 
+    isExactBankMatch(word, category) {
+        const bank = this.categoryBanks?.[category];
+        if (!Array.isArray(bank)) return false;
+
+        const normalizedWord = this.normalizeLookupText(word).toUpperCase();
+        return bank.some((entry) => this.normalizeLookupText(entry).toUpperCase() === normalizedWord);
+    }
+
     getApiSupportedCategories() {
         return [
             'País',
@@ -305,6 +313,20 @@ class VersusLetra {
         }
     }
 
+    async fetchJsonResponseWithTimeout(url, timeoutMs = 5000) {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+        try {
+            const response = await fetch(url, { signal: controller.signal });
+            const data = response.ok ? await response.json() : null;
+            return { ok: response.ok, status: response.status, data };
+        } catch (error) {
+            return { ok: false, status: 0, data: null };
+        } finally {
+            clearTimeout(timeoutId);
+        }
+    }
+
     getApiCategoryByLabel(category) {
         if (category === 'Pais') return 'País';
         if (category === 'Serie') return 'Série';
@@ -319,12 +341,24 @@ class VersusLetra {
             return { status: 'invalid', message: 'Palavra inválida.' };
         }
 
+        if (this.isExactBankMatch(normalizedWord, safeCategory)) {
+            return { status: 'valid' };
+        }
+
         switch (safeCategory) {
             case 'País': {
-                const url = `https://restcountries.com/v3.1/name/${encodeURIComponent(normalizedWord)}?fullText=true`;
+                const url = 'https://countriesnow.space/api/v0.1/countries/iso';
                 const data = await this.fetchJsonWithTimeout(url);
-                if (Array.isArray(data) && data.length > 0) return { status: 'valid' };
                 if (data === null) return { status: 'unknown', message: 'API de países indisponível.' };
+                if (Array.isArray(data?.data)) {
+                    const isCountry = data.data.some((country) => {
+                        const names = [country?.name, country?.Iso2, country?.Iso3]
+                            .filter(Boolean)
+                            .map((value) => this.normalizeLookupText(value).toUpperCase());
+                        return names.includes(normalizedWord.toUpperCase());
+                    });
+                    if (isCountry) return { status: 'valid' };
+                }
                 return { status: 'invalid', message: `"${word}" não foi encontrado como país.` };
             }
             case 'Cidade': {
@@ -335,10 +369,21 @@ class VersusLetra {
                 return { status: 'invalid', message: `"${word}" não foi encontrada como cidade.` };
             }
             case 'Filme': {
-                const url = `https://itunes.apple.com/search?term=${encodeURIComponent(normalizedWord)}&entity=movie&limit=5`;
+                const slug = this.normalizeSlug(normalizedWord);
+                if (!slug) return { status: 'invalid', message: 'Filme inválido.' };
+                const firstChar = slug[0] || 'a';
+                const url = `https://v3.sg.media-imdb.com/suggestion/${encodeURIComponent(firstChar)}/${encodeURIComponent(slug)}.json`;
                 const data = await this.fetchJsonWithTimeout(url);
                 if (data === null) return { status: 'unknown', message: 'API de filmes indisponível.' };
-                if (Array.isArray(data?.results) && data.results.length > 0) return { status: 'valid' };
+                if (Array.isArray(data?.d)) {
+                    const isMovie = data.d.some((item) => {
+                        const title = this.normalizeLookupText(item?.l).toUpperCase();
+                        const mediaType = String(item?.qid || item?.q || '').toLowerCase();
+                        const looksLikeMovie = ['movie', 'feature', 'tvmovie', 'short'].some((type) => mediaType.includes(type));
+                        return looksLikeMovie && title === normalizedWord.toUpperCase();
+                    });
+                    if (isMovie) return { status: 'valid' };
+                }
                 return { status: 'invalid', message: `"${word}" não foi encontrado como filme.` };
             }
             case 'Série': {
@@ -359,9 +404,10 @@ class VersusLetra {
                 const slug = this.normalizeSlug(normalizedWord);
                 if (!slug) return { status: 'invalid', message: 'Pokemon inválido.' };
                 const url = `https://pokeapi.co/api/v2/pokemon/${encodeURIComponent(slug)}`;
-                const data = await this.fetchJsonWithTimeout(url);
-                if (data === null) return { status: 'unknown', message: 'API de Pokemon indisponível.' };
-                if (data?.name) return { status: 'valid' };
+                const response = await this.fetchJsonResponseWithTimeout(url);
+                if (response.status === 404) return { status: 'invalid', message: `"${word}" não foi encontrado como Pokemon.` };
+                if (!response.ok) return { status: 'unknown', message: 'API de Pokemon indisponível.' };
+                if (response.data?.name) return { status: 'valid' };
                 return { status: 'invalid', message: `"${word}" não foi encontrado como Pokemon.` };
             }
             case 'Livro': {
@@ -372,10 +418,19 @@ class VersusLetra {
                 return { status: 'invalid', message: `"${word}" não foi encontrado como livro.` };
             }
             case 'Artista Musical': {
-                const url = `https://itunes.apple.com/search?term=${encodeURIComponent(normalizedWord)}&entity=musicArtist&limit=5`;
+                const url = `https://musicbrainz.org/ws/2/artist/?query=${encodeURIComponent(`artist:${normalizedWord}`)}&fmt=json&limit=5`;
                 const data = await this.fetchJsonWithTimeout(url);
                 if (data === null) return { status: 'unknown', message: 'API de artistas indisponível.' };
-                if (Array.isArray(data?.results) && data.results.length > 0) return { status: 'valid' };
+                if (Array.isArray(data?.artists)) {
+                    const isArtist = data.artists.some((artist) => {
+                        const score = Number(artist?.score || 0);
+                        const names = [artist?.name, artist?.['sort-name'], ...(artist?.aliases || []).map((alias) => alias?.name)]
+                            .filter(Boolean)
+                            .map((value) => this.normalizeLookupText(value).toUpperCase());
+                        return score >= 70 && names.includes(normalizedWord.toUpperCase());
+                    });
+                    if (isArtist) return { status: 'valid' };
+                }
                 return { status: 'invalid', message: `"${word}" não foi encontrado como artista musical.` };
             }
             default:
