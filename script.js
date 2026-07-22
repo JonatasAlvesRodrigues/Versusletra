@@ -29,7 +29,9 @@ import {
     joinFriendRoom as joinFriendRoomModule,
     joinFriendRoomByNick as joinFriendRoomByNickModule,
     unfollowFriend as unfollowFriendModule,
-    inviteFriendToRoom as inviteFriendToRoomModule
+    inviteFriendToRoom as inviteFriendToRoomModule,
+    setupFriendInviteChannel as setupFriendInviteChannelModule,
+    sendPendingRoomInvite as sendPendingRoomInviteModule
 } from './modules/friends-online.js';
 import {
     startPartyGame as startPartyGameModule,
@@ -100,6 +102,7 @@ class VersusLetra {
         this.rewards = JSON.parse(JSON.stringify(REWARDS));
         this.activeThemeVarKeys = [];
         this.rewardsHistoryKey = 'versus-letra-rewards-history';
+        this.adminThemePreviewBackup = null;
 
         // New Features State
         this.avatars = this.rewards.avatars.map(a => a.char);
@@ -132,6 +135,10 @@ class VersusLetra {
         this.maxOnlinePlayers = 20;
         this.maxPartyPlayers = 20;
         this.wasRoomFull = false;
+        this.friendInviteChannel = null;
+        this.friendInviteReady = false;
+        this.friendInviteUserId = null;
+        this.pendingRoomInvite = null;
         this.externalPauseActive = false;
         this.wasMainTimerRunning = false;
         this.wasPartyTimerRunning = false;
@@ -151,7 +158,6 @@ class VersusLetra {
         this.screens = buildScreensMap(document);
 
         this.init();
-        this.loadSharedRewards();
         try {
             if (typeof this.crazyBridge.applyAudioSettings === 'function') {
                 this.crazyBridge.applyAudioSettings(this);
@@ -159,10 +165,23 @@ class VersusLetra {
         } catch (error) {
             console.warn('CrazyGames audio settings hook failed:', error);
         }
-        this.checkSession();
-        this.startOnlinePresence();
         this.checkDevice(); // Detecção de mobile/desktop
+        this.scheduleBootTasks();
         console.log('VersusLetra v2.3 - Friends System');
+    }
+
+    scheduleBootTasks() {
+        const run = () => {
+            this.checkSession();
+            setTimeout(() => this.loadSharedRewards(), 0);
+            setTimeout(() => this.startOnlinePresence(), 120);
+        };
+
+        if (typeof window.requestIdleCallback === 'function') {
+            window.requestIdleCallback(run, { timeout: 600 });
+        } else {
+            setTimeout(run, 0);
+        }
     }
 
     checkDevice() {
@@ -204,8 +223,164 @@ class VersusLetra {
         return this.sanitizePlainText(value, { maxLength: 180, fallback: '' });
     }
 
+    getQuickChatPhrases() {
+        if (this.language === 'en') {
+            return [
+                'Good luck!',
+                'Nice move!',
+                'Ready!',
+                'Let us start!',
+                'Need one more player.',
+                'I am thinking...',
+                'This is hard!',
+                'Great round!'
+            ];
+        }
+        return [
+            'Boa sorte!',
+            'Boa jogada!',
+            'Pronto!',
+            'Bora comecar!',
+            'Falta 1 jogador.',
+            'Estou pensando...',
+            'Essa ta dificil!',
+            'Rodada top!'
+        ];
+    }
+
+    sanitizeQuickChatPhrase(value) {
+        const phrase = this.sanitizePlainText(value, { maxLength: 48, fallback: '' });
+        return this.getQuickChatPhrases().includes(phrase) ? phrase : '';
+    }
+
     sanitizeCategoryName(value) {
         return this.sanitizePlainText(value, { maxLength: 30, fallback: '' });
+    }
+
+    normalizeLookupText(value) {
+        return String(value ?? '')
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .replace(/\s+/g, ' ')
+            .trim();
+    }
+
+    normalizeSlug(value) {
+        return this.normalizeLookupText(value)
+            .toLowerCase()
+            .replace(/[^a-z0-9\s-]/g, '')
+            .replace(/\s+/g, '-')
+            .replace(/-+/g, '-')
+            .replace(/^-|-$/g, '');
+    }
+
+    getApiSupportedCategories() {
+        return [
+            'País',
+            'Cidade',
+            'Filme',
+            'Série',
+            'Time de Futebol',
+            'Pokemon',
+            'Livro',
+            'Artista Musical'
+        ];
+    }
+
+    isCategoryApiSupported(category) {
+        return this.getApiSupportedCategories().includes(category);
+    }
+
+    async fetchJsonWithTimeout(url, timeoutMs = 5000) {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+        try {
+            const response = await fetch(url, { signal: controller.signal });
+            if (!response.ok) return null;
+            return response.json();
+        } catch (error) {
+            return null;
+        } finally {
+            clearTimeout(timeoutId);
+        }
+    }
+
+    getApiCategoryByLabel(category) {
+        if (category === 'Pais') return 'País';
+        if (category === 'Serie') return 'Série';
+        return category;
+    }
+
+    async validateCategoryByApi(word, category) {
+        const normalizedWord = this.normalizeLookupText(word);
+        const safeCategory = this.getApiCategoryByLabel(this.sanitizeCategoryName(category));
+
+        if (!normalizedWord) {
+            return { status: 'invalid', message: 'Palavra inválida.' };
+        }
+
+        switch (safeCategory) {
+            case 'País': {
+                const url = `https://restcountries.com/v3.1/name/${encodeURIComponent(normalizedWord)}?fullText=true`;
+                const data = await this.fetchJsonWithTimeout(url);
+                if (Array.isArray(data) && data.length > 0) return { status: 'valid' };
+                if (data === null) return { status: 'unknown', message: 'API de países indisponível.' };
+                return { status: 'invalid', message: `"${word}" não foi encontrado como país.` };
+            }
+            case 'Cidade': {
+                const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(normalizedWord)}&count=5&language=pt&format=json`;
+                const data = await this.fetchJsonWithTimeout(url);
+                if (data === null) return { status: 'unknown', message: 'API de cidades indisponível.' };
+                if (Array.isArray(data?.results) && data.results.length > 0) return { status: 'valid' };
+                return { status: 'invalid', message: `"${word}" não foi encontrada como cidade.` };
+            }
+            case 'Filme': {
+                const url = `https://itunes.apple.com/search?term=${encodeURIComponent(normalizedWord)}&entity=movie&limit=5`;
+                const data = await this.fetchJsonWithTimeout(url);
+                if (data === null) return { status: 'unknown', message: 'API de filmes indisponível.' };
+                if (Array.isArray(data?.results) && data.results.length > 0) return { status: 'valid' };
+                return { status: 'invalid', message: `"${word}" não foi encontrado como filme.` };
+            }
+            case 'Série': {
+                const url = `https://api.tvmaze.com/search/shows?q=${encodeURIComponent(normalizedWord)}`;
+                const data = await this.fetchJsonWithTimeout(url);
+                if (data === null) return { status: 'unknown', message: 'API de séries indisponível.' };
+                if (Array.isArray(data) && data.length > 0) return { status: 'valid' };
+                return { status: 'invalid', message: `"${word}" não foi encontrado como série.` };
+            }
+            case 'Time de Futebol': {
+                const url = `https://www.thesportsdb.com/api/v1/json/3/searchteams.php?t=${encodeURIComponent(normalizedWord)}`;
+                const data = await this.fetchJsonWithTimeout(url);
+                if (data === null) return { status: 'unknown', message: 'API de times indisponível.' };
+                if (Array.isArray(data?.teams) && data.teams.length > 0) return { status: 'valid' };
+                return { status: 'invalid', message: `"${word}" não foi encontrado como time de futebol.` };
+            }
+            case 'Pokemon': {
+                const slug = this.normalizeSlug(normalizedWord);
+                if (!slug) return { status: 'invalid', message: 'Pokemon inválido.' };
+                const url = `https://pokeapi.co/api/v2/pokemon/${encodeURIComponent(slug)}`;
+                const data = await this.fetchJsonWithTimeout(url);
+                if (data === null) return { status: 'unknown', message: 'API de Pokemon indisponível.' };
+                if (data?.name) return { status: 'valid' };
+                return { status: 'invalid', message: `"${word}" não foi encontrado como Pokemon.` };
+            }
+            case 'Livro': {
+                const url = `https://openlibrary.org/search.json?title=${encodeURIComponent(normalizedWord)}&limit=5`;
+                const data = await this.fetchJsonWithTimeout(url);
+                if (data === null) return { status: 'unknown', message: 'API de livros indisponível.' };
+                if (Number(data?.numFound || 0) > 0) return { status: 'valid' };
+                return { status: 'invalid', message: `"${word}" não foi encontrado como livro.` };
+            }
+            case 'Artista Musical': {
+                const url = `https://itunes.apple.com/search?term=${encodeURIComponent(normalizedWord)}&entity=musicArtist&limit=5`;
+                const data = await this.fetchJsonWithTimeout(url);
+                if (data === null) return { status: 'unknown', message: 'API de artistas indisponível.' };
+                if (Array.isArray(data?.results) && data.results.length > 0) return { status: 'valid' };
+                return { status: 'invalid', message: `"${word}" não foi encontrado como artista musical.` };
+            }
+            default:
+                return { status: 'unknown', message: 'Categoria sem API de validação.' };
+        }
     }
 
     sanitizePeerId(value) {
@@ -400,6 +575,14 @@ class VersusLetra {
 
     inviteFriendToRoom(friend) {
         return inviteFriendToRoomModule(this, friend);
+    }
+
+    setupFriendInviteChannel() {
+        return setupFriendInviteChannelModule(this);
+    }
+
+    async sendPendingRoomInvite() {
+        return sendPendingRoomInviteModule(this);
     }
 
     ensureFriendProfileModal() {
@@ -642,6 +825,16 @@ class VersusLetra {
                 </div>
             </div>
 
+            <div class="admin-block">
+                <h4>JSON para IA</h4>
+                <p class="admin-tip">Exporte JSON, peça para uma IA criar/ajustar um tema e importe de volta.</p>
+                <textarea id="admin-rewards-json" class="admin-json" placeholder="Cole aqui o JSON de recompensas customizadas"></textarea>
+                <div class="admin-actions-row">
+                    <button id="btn-admin-export-rewards" class="btn-secondary">Exportar JSON</button>
+                    <button id="btn-admin-import-rewards" class="btn-secondary">Importar JSON</button>
+                </div>
+            </div>
+
             <p id="admin-rewards-status" class="admin-status"></p>
         `;
     }
@@ -662,6 +855,8 @@ class VersusLetra {
         bindClick('btn-admin-cancel-color-edit', () => this.clearAdminEditState('color'));
         bindClick('btn-admin-cancel-theme-edit', () => this.clearAdminEditState('theme'));
         bindClick('btn-admin-clear-rewards', () => this.clearAllCustomRewards());
+        bindClick('btn-admin-export-rewards', () => this.exportAdminRewardsJson());
+        bindClick('btn-admin-import-rewards', () => this.importAdminRewardsJson());
         bindClick('btn-admin-generate-theme-id', () => {
             const nameInput = document.getElementById('admin-theme-name');
             const idInput = document.getElementById('admin-theme-id');
@@ -1229,6 +1424,18 @@ class VersusLetra {
         const text = document.getElementById('admin-theme-text')?.value;
 
         if (!primary || !bg || !card || !text) return;
+        const keys = ['--primary-color', '--bg-color', '--card-bg', '--text-color'];
+        if (!this.adminThemePreviewBackup) {
+            this.adminThemePreviewBackup = {
+                root: Object.fromEntries(keys.map((key) => [key, document.documentElement.style.getPropertyValue(key)])),
+                body: Object.fromEntries(keys.map((key) => [key, document.body.style.getPropertyValue(key)]))
+            };
+        }
+
+        document.documentElement.style.setProperty('--primary-color', primary);
+        document.documentElement.style.setProperty('--bg-color', bg);
+        document.documentElement.style.setProperty('--card-bg', card);
+        document.documentElement.style.setProperty('--text-color', text);
         document.body.style.setProperty('--primary-color', primary);
         document.body.style.setProperty('--bg-color', bg);
         document.body.style.setProperty('--card-bg', card);
@@ -1238,10 +1445,27 @@ class VersusLetra {
 
     clearAdminThemePreview(options = {}) {
         const { silent = false } = options;
-        document.body.style.removeProperty('--primary-color');
-        document.body.style.removeProperty('--bg-color');
-        document.body.style.removeProperty('--card-bg');
-        document.body.style.removeProperty('--text-color');
+        const keys = ['--primary-color', '--bg-color', '--card-bg', '--text-color'];
+
+        if (this.adminThemePreviewBackup) {
+            keys.forEach((key) => {
+                const rootValue = this.adminThemePreviewBackup.root?.[key] ?? '';
+                const bodyValue = this.adminThemePreviewBackup.body?.[key] ?? '';
+
+                if (rootValue) document.documentElement.style.setProperty(key, rootValue);
+                else document.documentElement.style.removeProperty(key);
+
+                if (bodyValue) document.body.style.setProperty(key, bodyValue);
+                else document.body.style.removeProperty(key);
+            });
+            this.adminThemePreviewBackup = null;
+        } else {
+            keys.forEach((key) => {
+                document.documentElement.style.removeProperty(key);
+                document.body.style.removeProperty(key);
+            });
+        }
+
         if (!silent) this.setAdminStatus('Pré-visualização limpa.', 'info');
     }
 
@@ -2105,23 +2329,27 @@ class VersusLetra {
             chatContainer.innerHTML = `
                 <div class="chat-messages" id="chat-messages"></div>
                 <div class="chat-input-area">
-                    <input type="text" id="chat-input" placeholder="Diga oi para o grupo...">
+                    <select id="chat-input" class="chat-presets-select"></select>
                     <button id="btn-send-chat" class="btn-primary">ENVIAR</button>
                 </div>
             `;
             lobbySetup.appendChild(chatContainer);
 
             document.getElementById('btn-send-chat').onclick = () => this.sendChatMessage();
-            document.getElementById('chat-input').onkeypress = (e) => {
-                if (e.key === 'Enter') this.sendChatMessage();
-            };
+        }
+        const input = document.getElementById('chat-input');
+        if (input) {
+            const firstOption = this.language === 'en' ? 'Choose a phrase...' : 'Escolha uma frase...';
+            const options = [`<option value="">${firstOption}</option>`]
+                .concat(this.getQuickChatPhrases().map((phrase) => `<option value="${phrase}">${phrase}</option>`));
+            input.innerHTML = options.join('');
         }
         document.getElementById('chat-messages').innerHTML = '';
     }
 
     sendChatMessage() {
         const input = document.getElementById('chat-input');
-        const text = this.sanitizeChatText(input.value);
+        const text = this.sanitizeQuickChatPhrase(input.value);
         if (!text) return;
 
         const myName = this.sanitizePlayerName(this.players.find(p => p.id === this.myPlayerId)?.name, 'Eu');
@@ -2137,6 +2365,8 @@ class VersusLetra {
     addChatMessage(msg) {
         const container = document.getElementById('chat-messages');
         if (!container) return;
+        const safeText = this.sanitizeQuickChatPhrase(msg?.text);
+        if (!safeText) return;
 
         const div = document.createElement('div');
         div.className = 'chat-msg';
@@ -2144,7 +2374,7 @@ class VersusLetra {
         nameSpan.className = 'name';
         nameSpan.textContent = `${this.sanitizeAvatar(msg?.avatar)} ${this.sanitizePlayerName(msg?.name, 'Jogador')}:`;
         div.appendChild(nameSpan);
-        div.appendChild(document.createTextNode(` ${this.sanitizeChatText(msg?.text)}`));
+        div.appendChild(document.createTextNode(` ${safeText}`));
         container.appendChild(div);
         container.scrollTop = container.scrollHeight;
     }
@@ -2171,6 +2401,7 @@ class VersusLetra {
                         active: true
                     }];
                     this.renderPlayerInputs();
+                    this.sendPendingRoomInvite();
                 } else {
                     this.isHost = false;
                 }
@@ -2363,7 +2594,7 @@ class VersusLetra {
                 if (Array.isArray(data.categories)) {
                     const incomingCategories = data.categories
                         .map((category) => this.sanitizeCategoryName(category))
-                        .filter(Boolean);
+                        .filter((category) => category && this.isCategoryApiSupported(category));
                     this.categories = incomingCategories.length > 0 ? incomingCategories : [...this.defaultCategories];
                 }
                 this.currentPlayerIndex = data.currentPlayerIndex;
@@ -2446,9 +2677,10 @@ class VersusLetra {
                 break;
             case 'CHAT_MSG':
                 if (!data.msg || typeof data.msg !== 'object') return;
+                if (!this.sanitizeQuickChatPhrase(data.msg.text)) return;
                 this.addChatMessage({
                     name: this.sanitizePlayerName(data.msg.name),
-                    text: this.sanitizeChatText(data.msg.text),
+                    text: this.sanitizeQuickChatPhrase(data.msg.text),
                     avatar: this.sanitizeAvatar(data.msg.avatar)
                 });
                 break;
@@ -2649,6 +2881,7 @@ class VersusLetra {
             }
 
             if (this.user) {
+                this.setupFriendInviteChannel();
                 const nameToShow = this.getDisplayName();
                 // Adiciona selo de ADM se for o caso
                 const adminBadge = this.isCurrentUserAdmin() ? ' <span style="font-size:0.6em; background:gold; color:black; padding:2px 5px; border-radius:5px; vertical-align:middle;">ADM</span>' : '';
@@ -3403,6 +3636,11 @@ class VersusLetra {
         const value = this.sanitizeCategoryName(input.value);
         const categoryExists = this.categories.some((cat) => cat.toLowerCase() === value.toLowerCase());
 
+        if (value && !this.isCategoryApiSupported(value)) {
+            this.showFloatingMessage('Essa categoria não tem API de validação integrada.', 'warning');
+            return;
+        }
+
         if (value && !categoryExists) {
             this.categories.push(value);
             input.value = '';
@@ -3436,6 +3674,8 @@ class VersusLetra {
     }
 
     validateAndStart() {
+        this.categories = this.categories.filter((category) => this.isCategoryApiSupported(category));
+
         if (!this.isOnline) {
             const inputs = document.querySelectorAll('.player-name-input');
             this.players = [];
@@ -3930,67 +4170,27 @@ class VersusLetra {
             return;
         }
 
-        // --- VALIDAÇÃO CRUZADA (BANCO DE DADOS LOCAL) ---
+        // --- VALIDAÇÃO PRINCIPAL POR API ---
         let finalSuccess = false;
         let finalMessage = 'Excelente!';
-        let skipFurtherValidation = false;
+        const validation = await this.validateCategoryByApi(word, this.currentCategory);
+        const canStartVote = !this.isTimeAttack && this.isOnline && this.players.filter((p) => p.active).length > 1;
 
-        // 1. Verificar se a palavra está no banco da categoria atual
-        if (this.categoryBanks[this.currentCategory]) {
-            const normalizedWord = word.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
-            const bank = this.categoryBanks[this.currentCategory].map(w => w.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase());
-            
-            if (bank.includes(normalizedWord)) {
-                finalSuccess = true;
-                skipFurtherValidation = true;
-            } else {
-                // 2. Se não está no banco atual, verificar se está em OUTRO banco
-                for (const [catName, words] of Object.entries(this.categoryBanks)) {
-                    if (catName === this.currentCategory) continue;
-                    const normalizedOtherBank = words.map(w => w.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase());
-                    if (normalizedOtherBank.includes(normalizedWord)) {
-                        finalSuccess = false;
-                        finalMessage = `Isso parece um(a) ${catName}, não um(a) ${this.currentCategory}!`;
-                        skipFurtherValidation = true;
-                        break;
-                    }
-                }
-            }
-        }
-
-        // 3. Validação (Online usa Votação / Local aceita direto)
-        if (!skipFurtherValidation) {
-            if (!this.isTimeAttack && this.isOnline && this.players.filter(p => p.active).length > 1) {
+        if (validation.status === 'valid') {
+            finalSuccess = true;
+        } else if (validation.status === 'invalid') {
+            finalSuccess = false;
+            finalMessage = validation.message || 'Resposta não compatível com a categoria.';
+        } else {
+            // API não conseguiu comprovar: abre votação apenas no modo online com múltiplos jogadores.
+            if (canStartVote) {
                 this.startVoting(word, this.currentCategory);
                 btnOk.textContent = originalText;
                 btnOk.disabled = false;
                 return;
             }
-
-            // Fallback Local ou Único Jogador: Se for categoria de palavra única, tenta dicionário
-            const wordCategories = ['Animal', 'Fruta', 'Objeto', 'Cor', 'Profissão', 'Comida', 'Esporte', 'Parte do corpo', 'Verbo', 'Adjetivo', 'Peça de Roupa', 'Bebida', 'Sobremesa', 'Instrumento Musical', 'Nome'];
-            const isWordCategory = wordCategories.includes(this.currentCategory);
-
-            if (isWordCategory) {
-                try {
-                    const response = await fetch(`https://api.dicionario-aberto.net/word/${word.toLowerCase()}`);
-                    const data = await response.json();
-                    finalSuccess = (data && data.length > 0);
-                    
-                    if (!finalSuccess && !this.isTimeAttack) {
-                        // Se não achou no dicionário e NÃO for time attack, abre para VOTAÇÃO manual
-                        this.startVoting(word, this.currentCategory);
-                        btnOk.textContent = originalText;
-                        btnOk.disabled = false;
-                        return;
-                    }
-                } catch (err) {
-                    // Se a API falhar, no Time Attack consideramos erro (para ser rígido), no normal aceitamos
-                    finalSuccess = !this.isTimeAttack;
-                }
-            } else {
-                finalSuccess = true;
-            }
+            finalSuccess = false;
+            finalMessage = validation.message || 'Não foi possível validar pela API agora.';
         }
 
         btnOk.textContent = originalText;

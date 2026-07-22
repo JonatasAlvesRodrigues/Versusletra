@@ -1,4 +1,4 @@
-const CACHE_NAME = 'versus-letra-v6';
+const CACHE_NAME = 'versus-letra-v7';
 const ASSETS = [
   './',
   './index.html',
@@ -18,46 +18,42 @@ const ASSETS = [
   './icon.png'
 ];
 
-// Install Service Worker
 self.addEventListener('install', (event) => {
   self.skipWaiting();
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(ASSETS);
-    })
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS))
   );
 });
 
-// Activate and Clean Old Caches
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((keys) => {
-      return Promise.all(
-        keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))
-      );
-    }).then(() => self.clients.claim())
+    caches.keys().then((keys) =>
+      Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key)))
+    ).then(() => self.clients.claim())
   );
 });
 
-// Fetch Strategy: Network First for assets, bypass for external APIs
+// Cache-first para arquivos locais: acelera reload e navegação.
 self.addEventListener('fetch', (event) => {
-  // Ignora chamadas para Supabase ou PeerJS (não devem ser cacheadas pelo SW)
-  if (event.request.url.includes('supabase.co') || event.request.url.includes('peerjs')) {
-    return;
-  }
+  if (event.request.method !== 'GET') return;
+
+  const url = new URL(event.request.url);
+  const isSameOrigin = url.origin === self.location.origin;
+  if (!isSameOrigin) return;
 
   event.respondWith(
-    fetch(event.request)
-      .then((response) => {
-        // Se a resposta for válida, atualiza o cache (para arquivos locais)
-        if (response && response.status === 200 && response.type === 'basic') {
-          const responseToCache = response.clone();
-          caches.open(CACHE_NAME).then((cache) => {
-            cache.put(event.request, responseToCache);
-          });
-        }
-        return response;
-      })
-      .catch(() => caches.match(event.request))
+    caches.match(event.request).then((cachedResponse) => {
+      const fetchAndUpdate = fetch(event.request)
+        .then((networkResponse) => {
+          if (networkResponse && networkResponse.status === 200 && networkResponse.type === 'basic') {
+            const cloned = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, cloned));
+          }
+          return networkResponse;
+        })
+        .catch(() => cachedResponse);
+
+      return cachedResponse || fetchAndUpdate;
+    })
   );
 });

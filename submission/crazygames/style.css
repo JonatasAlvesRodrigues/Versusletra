@@ -2594,16 +2594,6 @@ body.theme-pascoa .btn-secondary:hover {
     background: var(--card-bg);
 }
 
-.chat-presets-select {
-    flex: 1;
-    border-radius: 12px;
-    border: 2px solid var(--border-color);
-    background: var(--bg-color);
-    color: var(--text-color);
-    padding: 10px;
-    font-weight: 700;
-}
-
 /* Modal */
 .modal {
     display: none;
